@@ -1,0 +1,317 @@
+---
+title: "PCfB_FALL2019_Tidyverse"
+author: "Nick Kron"
+date: "10/21/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Getting started
+
+## Useful links
+
+[Cheatsheets for all your R needs] (https://rstudio.com/resources/cheatsheets/)
+[dplyr tutorial] (https://cran.r-project.org/web/packages/dplyr/vignettes/dplyr.html)
+
+## install the following packages by running the code below:
+
+```{r, eval = FALSE}
+intall.packages("tidyr")
+install.packages("tibble")
+install.packages("dplyr")
+```
+
+## load the packages
+```{r}
+
+library(tibble)
+library(tidyr)
+library(dplyr)
+
+```
+
+## lets load in our practice data and take a look at how it looks
+
+```{r}
+
+load("PCfB_FALL2019_Tidyverse.rdata")
+
+```
+
+```{r}
+head(expr)
+```
+
+```{r}
+head(metadata)
+```
+
+```{r}
+head(tx2kegg)
+```
+
+
+# Dplyr
+The R package `dplyr` is part of the Tidyverse suite that allows for complex data manipulation that makes data wranging and keeping data tidy a breeze. below we will go through some of the functions you will likeley use on a regular basis to work with your data sets. 
+
+
+## Pipes
+The `dplyr` package gives you access to pipe functionality that you are used to from the Command Line. Instead of using the UNIX pipe opperator `|`, in dplyr you use the `%>%` opperator. Pipes are used to string together chains of commands, using what is on the left of the pipe as input into whatever function is on the right of the pipe. These are called pipelines. Pipelines allow you to perform multiple opperations in a row without having to store intermediates, as shown below. 
+
+### The long way
+```{r}
+x <- expr$C1
+y <- x[x > 15]
+z <- sum(y)
+z
+```
+
+### using pipelines
+```{r}
+z <- expr %>% 
+  select(C1) %>% 
+  filter(C1 > 15) %>% 
+  sum()
+z
+```
+
+you can even pipe the data into other functions like ggplot if it is in the proper format! 
+
+```{r}
+
+library(ggplot2)
+expr %>% select(C1, C2) %>% ggplot(data = ., aes(x = C1, y = C2)) + geom_point()
+```
+
+The `.` can be used in the pipeline to explicitly specify the incoming data from the pipe.
+
+
+##Select
+The `dplyr` function `select` allows you to select columns in our tibble/dataframe and outputs those selects. This can allow you to pull out a few desired columns, reorganize the order of your columns, or remove specific columns from large tables, as seen below:
+
+### Select specific columns
+```{r}
+
+expr %>% select(c(C1,C2,C3))
+
+```
+
+### Reorder colums
+```{r}
+
+expr %>% select(C1,T1,C2,T2,everything())
+
+```
+
+### Remove a specific column
+```{r}
+
+expr %>% select(-C1)
+```
+
+
+## Filter
+
+The `filter` function allows you to subset your dataframe by the value in a particular column.
+```{r}
+expr %>% filter(C1 >15)
+```
+
+
+## Mutate
+
+The `mutate` function allows us to add a new column to the data from an existing column in the dataframe. 
+```{r}
+
+metadata %>% mutate(log_weight = log(weight))
+
+```
+
+
+## Summarise 
+
+As the name suggests, you can use the summarise function to generate a summary table of your dataframe using a specific function, like a mean for example. Summarise comes in a variety of flavors which can opperate on specific columns, all columns, etc. Pairing summarize with the `group` function allows for more control.
+
+###summarise all weights
+```{r}
+
+metadata %>% summarise(mean_weight=mean(weight))
+
+```
+
+### summarise all columns
+```{r}
+
+expr %>% summarise_all(mean)
+
+```
+
+### combine with gouping to afford more control 
+```{r}
+
+metadata %>% rownames_to_column("tx") %>% group_by(condition) %>% summarise(mean_weight=mean(weight))
+
+```
+
+## manipulating rownames in the tibble datastructure 
+Sometimes you want to turn a column in your dataset into rownames or vice versa. To do this we can use the `rownames_to_column` and `columns_to_rownames()` funtions.
+
+### rownames to a column
+```{r}
+expr %>% rownames_to_column(var = "tx")
+
+```
+
+### columns to rowname
+```{r}
+metadata %>% column_to_rownames(var = "sampleID")
+
+```
+
+
+
+## Join
+The suit of join functions in dplyr allow us to combine datasets safely without worrying about order or what values are present. Joins come in several flavors that are shown below.
+
+### join two datasets together by common values with 
+```{r}
+
+expr %>% rownames_to_column(var = "tx") %>%
+  full_join(tx2kegg,by = "tx")
+
+
+```
+
+In this full join, we combined all rows in `expr` with all rows in `txtkegg` and any missing values were filled in with NAs. Thoe pesky NAs can be a problem however, so what should we do about them? We could remove rows with NAs with other functions, or we could save ourselves the work and use a different join function. Using `inner_join` allows us to only select the rows that are in both datasets.
+
+```{r}
+
+expr %>% rownames_to_column(var = "tx") %>%
+  inner_join(tx2kegg,by = "tx")
+
+```
+
+# Tidyr
+The `tidyr` package in the Tidyverse sweet is all about tidying up your data so that is in the proper format for your downstream use. Below we will sample some useful examples.
+
+## gather
+The `gather` function allows you to collect a set of columns and combine them into a single column. This allows you to reformat your data into a long format that is easier to plot.
+
+```{r}
+
+expr %>% gather(key = "sampleID", value = "expr") %>% head()
+
+```
+
+notice however that we lost out rownames? This is because rownames can be unsafe during lots of matrix manipulation. This is a use case for when we would want to use a utility function in tibble package for transforming our rownmaes to a column that we can save for later.
+
+```{r}
+
+expr %>% rownames_to_column(var = "tx") %>% 
+  gather(key = "sampleID", value = "expr") %>% head()
+
+```
+
+This still isn't correct. Why? If we don't provide `gather` with the exact set of columns we want to use (or not use) it will assume we want to use them all. Below we talle gather to exlude the `tx` column to assure that we only combine the expression columns for each sample.
+
+
+```{r}
+
+expr %>% rownames_to_column(var = "tx") %>% 
+  gather(key = "sampleID", value = "expr", -c("tx")) %>% head()
+
+```
+
+Now we have a beautiful, long format dataframe ready for plotting! 
+
+```{r}
+
+expr %>% rownames_to_column(var = "tx") %>% 
+  gather(key = "sampleID", value = "expr", -c("tx")) %>%
+  ggplot(data = ., aes(x = sampleID, y = expr)) + geom_boxplot()
+
+```
+
+## spread
+The spread function can be viewed as the opposite of gather. We can take a column with diverse values, and make each unique value a column!
+
+```{r}
+
+expr %>% rownames_to_column(var = "tx") %>% 
+  gather(key = "sampleID", value = "expr", -c("tx")) %>%
+  spread(key = "sampleID", value = "expr") %>% head()
+
+```
+
+As you can see, the spread completely undid the gather.
+
+## Remove NAs
+
+Lets go back to the earlier example of `full_join` to see how `tidyr` can help us deal with `NA`s. Because we had more values in `tx` of the `tx2ko` dataframe, and we used `full_join` which keeps all rows in both dataframe, we ended up producing empty rows that were filled in with `NA`'s automatically. `NA`s can cause a lot of headaches, so knowing how to get rid of them can be important. One way to solve this is to remove rows with `NA`s entirely. for this we can do the following:
+
+
+```{r}
+
+expr %>% rownames_to_column(var = "tx") %>%
+  full_join(tx2kegg,by = "tx") %>%
+  drop_na()
+
+```
+
+# Etc
+
+here is how the sample data for this exercise was actually built using these packages:
+
+```{r, eval=F, echo=T}
+
+print("Don't run me")
+
+
+test <- matrix(nrow = 10,ncol = 12)
+for(i in 1:ncol(test)){
+  for(j in 1:nrow(test)){
+    test[j,i] = sample(0:20,1)
+  }
+}
+
+
+expr <- as.tibble(test)
+
+colnames(expr) <- c(paste0("C",1:6), paste0("T",1:6))
+
+expr$gene <- lapply(1:10, FUN = function(x){
+  paste0("NM_",
+       sample(0:9, 9) %>% c() %>% paste(., sep="", collapse=""),
+       ".",
+       sample(1:2, 1))
+}) %>% unlist()
+
+expr <- expr %>% rownames_to_column("rn") %>% column_to_rownames("gene") %>% select(., -c(rn))
+
+tx2kegg <- tibble(tx = c(rownames(expr),
+                         lapply(1:10, FUN = function(x){
+                           paste0("NM_",
+                                  sample(0:9, 9) %>% c() %>% paste(., sep="", collapse=""),
+                                  ".",
+                                  sample(1:2, 1))
+                         }) %>% unlist())
+)
+
+tx2kegg$ko <- lapply(1:20, FUN = function(x){
+  paste0("ko",
+         sample(0:9, 5) %>% c() %>% paste(., sep="", collapse=""))
+}) %>% unlist()
+
+
+metadata <- tibble(sampleID = colnames(expr)) %>% 
+  add_column(condition = c(rep("control",6), rep("tratement",6))) %>%
+  add_column(weight = runif(12, 20, 40) %>% round(.,digits = 3))
+
+save(file = "PCfB_FALL2019_Tidyverse.rdata", expr,metadata,tx2kegg)
+
+```
+
+
